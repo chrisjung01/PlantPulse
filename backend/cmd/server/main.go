@@ -2,7 +2,7 @@ package main
 
 import (
 	"database/sql"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -25,12 +25,14 @@ func main() {
 
 	sqlDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		log.Fatalf("open db: %v", err)
+		slog.Error("open db", "err", err)
+		os.Exit(1)
 	}
 	defer sqlDB.Close()
 
 	if err := db.ApplySchema(sqlDB); err != nil {
-		log.Fatalf("apply schema: %v", err)
+		slog.Error("apply schema", "err", err)
+		os.Exit(1)
 	}
 
 	queries := db.New(sqlDB)
@@ -41,8 +43,11 @@ func main() {
 	mux.HandleFunc("POST /readings", readings.Insert)
 	mux.HandleFunc("GET /readings", readings.List)
 
-	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", cors(allowedOrigin, mux)))
+	slog.Info("server starting", "addr", ":8080")
+	if err := http.ListenAndServe(":8080", handler.LogRequests(cors(allowedOrigin, mux))); err != nil {
+		slog.Error("server stopped", "err", err)
+		os.Exit(1)
+	}
 }
 
 func cors(origin string, next http.Handler) http.Handler {
