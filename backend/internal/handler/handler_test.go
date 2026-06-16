@@ -102,3 +102,88 @@ func TestHealth(t *testing.T) {
 		t.Errorf("unexpected body: %s", body)
 	}
 }
+
+func TestInsertReading_MissingSensorID(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	body := `{"sensor_id":"","recorded_at":1750000000}`
+	req := httptest.NewRequest(http.MethodPost, "/readings", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.Insert(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestInsertReading_MissingRecordedAt(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	body := `{"sensor_id":"esp32-test","recorded_at":0}`
+	req := httptest.NewRequest(http.MethodPost, "/readings", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.Insert(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestInsertReading_InvalidJSON(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	req := httptest.NewRequest(http.MethodPost, "/readings", bytes.NewBufferString("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.Insert(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestInsertReading_NullableFields(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	body := `{"sensor_id":"esp32-test","recorded_at":1750000000}`
+	req := httptest.NewRequest(http.MethodPost, "/readings", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.Insert(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp["temperature_celsius"]; !ok {
+		t.Error("expected temperature_celsius key in response")
+	}
+	if resp["temperature_celsius"] != nil {
+		t.Errorf("expected temperature_celsius to be null, got %v", resp["temperature_celsius"])
+	}
+	if _, ok := resp["humidity_percent"]; !ok {
+		t.Error("expected humidity_percent key in response")
+	}
+	if resp["humidity_percent"] != nil {
+		t.Errorf("expected humidity_percent to be null, got %v", resp["humidity_percent"])
+	}
+	if _, ok := resp["soil_moisture_percent"]; !ok {
+		t.Error("expected soil_moisture_percent key in response")
+	}
+	if resp["soil_moisture_percent"] != nil {
+		t.Errorf("expected soil_moisture_percent to be null, got %v", resp["soil_moisture_percent"])
+	}
+}
