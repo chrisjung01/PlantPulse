@@ -7,6 +7,8 @@ import (
 )
 
 // responseRecorder wraps http.ResponseWriter to capture the status code.
+// The default net/http ResponseWriter does not expose the status after it has
+// been written, so we intercept WriteHeader to record it for logging.
 type responseRecorder struct {
 	http.ResponseWriter
 	status int

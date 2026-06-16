@@ -35,6 +35,9 @@ type readingResponse struct {
 	SoilMoisturePercent *float64 `json:"soil_moisture_percent"`
 }
 
+// toResponse converts a DB row to the API response type. Nullable DB fields
+// (sql.NullFloat64) become *float64 so they serialise to null in JSON when
+// the sensor did not report that measurement, rather than a zero value.
 func toResponse(r db.Reading) readingResponse {
 	resp := readingResponse{
 		ID:         r.ID,
@@ -118,6 +121,7 @@ func (h *Readings) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Initialise with make so an empty result encodes to [] rather than null.
 	resp := make([]readingResponse, 0, len(rows))
 	for _, row := range rows {
 		resp = append(resp, toResponse(row))
