@@ -1,1 +1,6 @@
+# Documentation files
 docs/superpowers/
+
+# Backend specific files
+backend/server
+backend/plantpulse.db
