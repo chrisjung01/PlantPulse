@@ -187,3 +187,69 @@ func TestInsertReading_NullableFields(t *testing.T) {
 		t.Errorf("expected soil_moisture_percent to be null, got %v", resp["soil_moisture_percent"])
 	}
 }
+
+func TestListReadings_LimitZero(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	req := httptest.NewRequest(http.MethodGet, "/readings?limit=0", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListReadings_LimitTooHigh(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	req := httptest.NewRequest(http.MethodGet, "/readings?limit=501", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListReadings_LimitInvalid(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	req := httptest.NewRequest(http.MethodGet, "/readings?limit=abc", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListReadings_Empty(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewReadings(queries)
+
+	req := httptest.NewRequest(http.MethodGet, "/readings?limit=10", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var readings []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&readings); err != nil {
+		t.Fatal(err)
+	}
+	if readings == nil {
+		t.Error("expected [] not null")
+	}
+	if len(readings) != 0 {
+		t.Errorf("expected 0 readings, got %d", len(readings))
+	}
+}
