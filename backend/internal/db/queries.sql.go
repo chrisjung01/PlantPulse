@@ -10,6 +10,122 @@ import (
 	"database/sql"
 )
 
+const aggregateReadingsBySensorByDay = `-- name: AggregateReadingsBySensorByDay :many
+SELECT
+  strftime('%Y-%m-%dT00:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  AVG(temperature_celsius)   AS temperature_celsius,
+  AVG(humidity_percent)      AS humidity_percent,
+  AVG(soil_moisture_percent) AS soil_moisture_percent,
+  COUNT(*)                   AS sample_count
+FROM readings
+WHERE sensor_id = ?1
+  AND recorded_at >= ?2
+  AND recorded_at <= ?3
+GROUP BY bucket
+ORDER BY bucket ASC
+`
+
+type AggregateReadingsBySensorByDayParams struct {
+	SensorID string `json:"sensor_id"`
+	From     int64  `json:"from"`
+	To       int64  `json:"to"`
+}
+
+type AggregateReadingsBySensorByDayRow struct {
+	Bucket              interface{}     `json:"bucket"`
+	TemperatureCelsius  sql.NullFloat64 `json:"temperature_celsius"`
+	HumidityPercent     sql.NullFloat64 `json:"humidity_percent"`
+	SoilMoisturePercent sql.NullFloat64 `json:"soil_moisture_percent"`
+	SampleCount         int64           `json:"sample_count"`
+}
+
+func (q *Queries) AggregateReadingsBySensorByDay(ctx context.Context, arg AggregateReadingsBySensorByDayParams) ([]AggregateReadingsBySensorByDayRow, error) {
+	rows, err := q.db.QueryContext(ctx, aggregateReadingsBySensorByDay, arg.SensorID, arg.From, arg.To)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AggregateReadingsBySensorByDayRow
+	for rows.Next() {
+		var i AggregateReadingsBySensorByDayRow
+		if err := rows.Scan(
+			&i.Bucket,
+			&i.TemperatureCelsius,
+			&i.HumidityPercent,
+			&i.SoilMoisturePercent,
+			&i.SampleCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const aggregateReadingsBySensorByHour = `-- name: AggregateReadingsBySensorByHour :many
+SELECT
+  strftime('%Y-%m-%dT%H:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  AVG(temperature_celsius)   AS temperature_celsius,
+  AVG(humidity_percent)      AS humidity_percent,
+  AVG(soil_moisture_percent) AS soil_moisture_percent,
+  COUNT(*)                   AS sample_count
+FROM readings
+WHERE sensor_id = ?1
+  AND recorded_at >= ?2
+  AND recorded_at <= ?3
+GROUP BY bucket
+ORDER BY bucket ASC
+`
+
+type AggregateReadingsBySensorByHourParams struct {
+	SensorID string `json:"sensor_id"`
+	From     int64  `json:"from"`
+	To       int64  `json:"to"`
+}
+
+type AggregateReadingsBySensorByHourRow struct {
+	Bucket              interface{}     `json:"bucket"`
+	TemperatureCelsius  sql.NullFloat64 `json:"temperature_celsius"`
+	HumidityPercent     sql.NullFloat64 `json:"humidity_percent"`
+	SoilMoisturePercent sql.NullFloat64 `json:"soil_moisture_percent"`
+	SampleCount         int64           `json:"sample_count"`
+}
+
+func (q *Queries) AggregateReadingsBySensorByHour(ctx context.Context, arg AggregateReadingsBySensorByHourParams) ([]AggregateReadingsBySensorByHourRow, error) {
+	rows, err := q.db.QueryContext(ctx, aggregateReadingsBySensorByHour, arg.SensorID, arg.From, arg.To)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AggregateReadingsBySensorByHourRow
+	for rows.Next() {
+		var i AggregateReadingsBySensorByHourRow
+		if err := rows.Scan(
+			&i.Bucket,
+			&i.TemperatureCelsius,
+			&i.HumidityPercent,
+			&i.SoilMoisturePercent,
+			&i.SampleCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertReading = `-- name: InsertReading :one
 INSERT INTO readings (sensor_id, recorded_at, temperature_celsius, humidity_percent, soil_moisture_percent)
 VALUES (?, ?, ?, ?, ?)
@@ -68,6 +184,85 @@ func (q *Queries) ListReadings(ctx context.Context, limit int64) ([]Reading, err
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReadingsBySensor = `-- name: ListReadingsBySensor :many
+SELECT id, sensor_id, recorded_at, temperature_celsius, humidity_percent, soil_moisture_percent
+FROM readings
+WHERE sensor_id = ?1
+  AND recorded_at >= ?2
+  AND recorded_at <= ?3
+ORDER BY recorded_at ASC
+LIMIT ?4
+`
+
+type ListReadingsBySensorParams struct {
+	SensorID string `json:"sensor_id"`
+	From     int64  `json:"from"`
+	To       int64  `json:"to"`
+	Limit    int64  `json:"limit"`
+}
+
+func (q *Queries) ListReadingsBySensor(ctx context.Context, arg ListReadingsBySensorParams) ([]Reading, error) {
+	rows, err := q.db.QueryContext(ctx, listReadingsBySensor,
+		arg.SensorID,
+		arg.From,
+		arg.To,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Reading
+	for rows.Next() {
+		var i Reading
+		if err := rows.Scan(
+			&i.ID,
+			&i.SensorID,
+			&i.RecordedAt,
+			&i.TemperatureCelsius,
+			&i.HumidityPercent,
+			&i.SoilMoisturePercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSensorIDs = `-- name: ListSensorIDs :many
+SELECT DISTINCT sensor_id FROM readings ORDER BY sensor_id
+`
+
+func (q *Queries) ListSensorIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSensorIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var sensor_id string
+		if err := rows.Scan(&sensor_id); err != nil {
+			return nil, err
+		}
+		items = append(items, sensor_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
