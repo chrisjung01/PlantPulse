@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -251,5 +252,62 @@ func TestListReadings_Empty(t *testing.T) {
 	}
 	if len(readings) != 0 {
 		t.Errorf("expected 0 readings, got %d", len(readings))
+	}
+}
+
+func insertTestReading(t *testing.T, queries *db.Queries, sensorID string, recordedAt int64) {
+	t.Helper()
+	_, err := queries.InsertReading(context.Background(), db.InsertReadingParams{
+		SensorID:            sensorID,
+		RecordedAt:          recordedAt,
+		TemperatureCelsius:  sql.NullFloat64{Float64: 22.0, Valid: true},
+		HumidityPercent:     sql.NullFloat64{Float64: 60.0, Valid: true},
+		SoilMoisturePercent: sql.NullFloat64{Float64: 40.0, Valid: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSensorsList(t *testing.T) {
+	queries := setupDB(t)
+	insertTestReading(t, queries, "esp32-A", 1750000000)
+
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors", nil)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var ids []string
+	if err := json.NewDecoder(w.Body).Decode(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "esp32-A" {
+		t.Errorf("unexpected ids: %v", ids)
+	}
+}
+
+func TestSensorsList_Empty(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors", nil)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var ids []string
+	if err := json.NewDecoder(w.Body).Decode(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if ids == nil {
+		t.Error("expected [] not null")
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 ids, got %d", len(ids))
 	}
 }
