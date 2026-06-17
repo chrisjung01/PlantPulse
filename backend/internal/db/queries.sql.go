@@ -12,7 +12,7 @@ import (
 
 const aggregateReadingsBySensorByDay = `-- name: AggregateReadingsBySensorByDay :many
 SELECT
-  strftime('%Y-%m-%dT00:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  CAST(strftime('%Y-%m-%dT00:00:00Z', datetime(recorded_at, 'unixepoch')) AS TEXT) AS bucket,
   AVG(temperature_celsius)   AS temperature_celsius,
   AVG(humidity_percent)      AS humidity_percent,
   AVG(soil_moisture_percent) AS soil_moisture_percent,
@@ -32,7 +32,7 @@ type AggregateReadingsBySensorByDayParams struct {
 }
 
 type AggregateReadingsBySensorByDayRow struct {
-	Bucket              interface{}     `json:"bucket"`
+	Bucket              string          `json:"bucket"`
 	TemperatureCelsius  sql.NullFloat64 `json:"temperature_celsius"`
 	HumidityPercent     sql.NullFloat64 `json:"humidity_percent"`
 	SoilMoisturePercent sql.NullFloat64 `json:"soil_moisture_percent"`
@@ -70,7 +70,7 @@ func (q *Queries) AggregateReadingsBySensorByDay(ctx context.Context, arg Aggreg
 
 const aggregateReadingsBySensorByHour = `-- name: AggregateReadingsBySensorByHour :many
 SELECT
-  strftime('%Y-%m-%dT%H:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  CAST(strftime('%Y-%m-%dT%H:00:00Z', datetime(recorded_at, 'unixepoch')) AS TEXT) AS bucket,
   AVG(temperature_celsius)   AS temperature_celsius,
   AVG(humidity_percent)      AS humidity_percent,
   AVG(soil_moisture_percent) AS soil_moisture_percent,
@@ -90,7 +90,7 @@ type AggregateReadingsBySensorByHourParams struct {
 }
 
 type AggregateReadingsBySensorByHourRow struct {
-	Bucket              interface{}     `json:"bucket"`
+	Bucket              string          `json:"bucket"`
 	TemperatureCelsius  sql.NullFloat64 `json:"temperature_celsius"`
 	HumidityPercent     sql.NullFloat64 `json:"humidity_percent"`
 	SoilMoisturePercent sql.NullFloat64 `json:"soil_moisture_percent"`

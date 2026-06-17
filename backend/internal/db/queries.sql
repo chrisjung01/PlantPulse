@@ -20,7 +20,7 @@ LIMIT @limit;
 
 -- name: AggregateReadingsBySensorByHour :many
 SELECT
-  strftime('%Y-%m-%dT%H:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  CAST(strftime('%Y-%m-%dT%H:00:00Z', datetime(recorded_at, 'unixepoch')) AS TEXT) AS bucket,
   AVG(temperature_celsius)   AS temperature_celsius,
   AVG(humidity_percent)      AS humidity_percent,
   AVG(soil_moisture_percent) AS soil_moisture_percent,
@@ -34,7 +34,7 @@ ORDER BY bucket ASC;
 
 -- name: AggregateReadingsBySensorByDay :many
 SELECT
-  strftime('%Y-%m-%dT00:00:00Z', datetime(recorded_at, 'unixepoch')) AS bucket,
+  CAST(strftime('%Y-%m-%dT00:00:00Z', datetime(recorded_at, 'unixepoch')) AS TEXT) AS bucket,
   AVG(temperature_celsius)   AS temperature_celsius,
   AVG(humidity_percent)      AS humidity_percent,
   AVG(soil_moisture_percent) AS soil_moisture_percent,
