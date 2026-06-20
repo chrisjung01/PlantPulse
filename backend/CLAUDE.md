@@ -30,12 +30,15 @@ CREATE TABLE readings (
 );
 ```
 
-## API endpoints (Slice 1)
+## API endpoints
 
-| Method | Path                      | Notes                        |
-|--------|---------------------------|------------------------------|
-| POST   | `/readings`               | JSON body, insert one row    |
-| GET    | `/readings?limit=N`       | Return last N rows, desc ts  |
+| Method | Path                                         | Notes                                                              |
+|--------|----------------------------------------------|--------------------------------------------------------------------|
+| POST   | `/readings`                                  | JSON body, insert one row                                          |
+| GET    | `/readings?limit=N`                          | Return last N rows, desc ts                                        |
+| GET    | `/sensors`                                   | Distinct sensor IDs as JSON array                                  |
+| GET    | `/sensors/{id}/readings`                     | `from` (unix, req), `to` (unix, req), `limit` (1–1000, def 100)   |
+| GET    | `/sensors/{id}/readings/aggregated`          | `from`, `to`, `granularity` (`hour`\|`day`) — all required        |
 
 ## Conventions
 

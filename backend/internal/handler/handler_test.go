@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -251,5 +252,232 @@ func TestListReadings_Empty(t *testing.T) {
 	}
 	if len(readings) != 0 {
 		t.Errorf("expected 0 readings, got %d", len(readings))
+	}
+}
+
+func insertTestReading(t *testing.T, queries *db.Queries, sensorID string, recordedAt int64) {
+	t.Helper()
+	_, err := queries.InsertReading(context.Background(), db.InsertReadingParams{
+		SensorID:            sensorID,
+		RecordedAt:          recordedAt,
+		TemperatureCelsius:  sql.NullFloat64{Float64: 22.0, Valid: true},
+		HumidityPercent:     sql.NullFloat64{Float64: 60.0, Valid: true},
+		SoilMoisturePercent: sql.NullFloat64{Float64: 40.0, Valid: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSensorsList(t *testing.T) {
+	queries := setupDB(t)
+	insertTestReading(t, queries, "esp32-A", 1750000000)
+
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors", nil)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var ids []string
+	if err := json.NewDecoder(w.Body).Decode(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 || ids[0] != "esp32-A" {
+		t.Errorf("unexpected ids: %v", ids)
+	}
+}
+
+func TestSensorsList_Empty(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors", nil)
+	w := httptest.NewRecorder()
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var ids []string
+	if err := json.NewDecoder(w.Body).Decode(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if ids == nil {
+		t.Error("expected [] not null")
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 ids, got %d", len(ids))
+	}
+}
+
+func TestSensorsListReadings(t *testing.T) {
+	queries := setupDB(t)
+	insertTestReading(t, queries, "esp32-A", 1750000100)
+	insertTestReading(t, queries, "esp32-A", 1750000200)
+	insertTestReading(t, queries, "esp32-B", 1750000150)
+
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings?from=1750000000&to=1750001000", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.ListReadings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var readings []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&readings); err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 2 {
+		t.Errorf("expected 2 readings for esp32-A, got %d", len(readings))
+	}
+}
+
+func TestSensorsListReadings_MissingFrom(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings?to=1750001000", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.ListReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSensorsListReadings_MissingTo(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings?from=1750000000", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.ListReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSensorsListReadings_InvalidRange(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings?from=1750001000&to=1750000000", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.ListReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSensorsAggregateReadings_Hour(t *testing.T) {
+	queries := setupDB(t)
+	insertTestReading(t, queries, "esp32-A", 1750000100)
+	insertTestReading(t, queries, "esp32-A", 1750000200)
+
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings/aggregated?from=1750000000&to=1750001000&granularity=hour", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.AggregateReadings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var buckets []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&buckets); err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 {
+		t.Errorf("expected 1 bucket, got %d", len(buckets))
+	}
+	if buckets[0]["sample_count"] != float64(2) {
+		t.Errorf("expected sample_count 2, got %v", buckets[0]["sample_count"])
+	}
+}
+
+func TestSensorsAggregateReadings_Day(t *testing.T) {
+	queries := setupDB(t)
+	insertTestReading(t, queries, "esp32-A", 1750000100)
+
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings/aggregated?from=1750000000&to=1750090000&granularity=day", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.AggregateReadings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var buckets []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&buckets); err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 {
+		t.Errorf("expected 1 bucket, got %d", len(buckets))
+	}
+}
+
+func TestSensorsAggregateReadings_InvalidGranularity(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings/aggregated?from=1750000000&to=1750001000&granularity=week", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.AggregateReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSensorsListReadings_UnknownSensor(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/unknown/readings?from=1750000000&to=1750001000", nil)
+	req.SetPathValue("id", "unknown")
+	w := httptest.NewRecorder()
+	h.ListReadings(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var readings []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&readings); err != nil {
+		t.Fatal(err)
+	}
+	if len(readings) != 0 {
+		t.Errorf("expected empty array, got %d readings", len(readings))
+	}
+}
+
+func TestSensorsAggregateReadings_MissingFrom(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings/aggregated?to=1750001000&granularity=hour", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.AggregateReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSensorsAggregateReadings_MissingTo(t *testing.T) {
+	queries := setupDB(t)
+	h := handler.NewSensors(queries)
+	req := httptest.NewRequest(http.MethodGet, "/sensors/esp32-A/readings/aggregated?from=1750000000&granularity=hour", nil)
+	req.SetPathValue("id", "esp32-A")
+	w := httptest.NewRecorder()
+	h.AggregateReadings(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }

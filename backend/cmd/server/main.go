@@ -37,11 +37,15 @@ func main() {
 
 	queries := db.New(sqlDB)
 	readings := handler.NewReadings(queries)
+	sensors := handler.NewSensors(queries)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handler.Health)
 	mux.HandleFunc("POST /readings", readings.Insert)
 	mux.HandleFunc("GET /readings", readings.List)
+	mux.HandleFunc("GET /sensors", sensors.List)
+	mux.HandleFunc("GET /sensors/{id}/readings", sensors.ListReadings)
+	mux.HandleFunc("GET /sensors/{id}/readings/aggregated", sensors.AggregateReadings)
 
 	slog.Info("server starting", "addr", ":8080")
 	if err := http.ListenAndServe(":8080", handler.LogRequests(cors(allowedOrigin, mux))); err != nil {
