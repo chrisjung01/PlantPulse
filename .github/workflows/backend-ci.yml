@@ -2,9 +2,10 @@ name: Backend CI
 
 on:
   push:
-    branches: ["**"]
-  pull_request:
     branches: [main]
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
 
 jobs:
   test:
@@ -19,9 +20,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
+          cache: true
+          cache-dependency-path: backend/go.sum
 
       - name: Vet
         run: go vet ./...
 
+      - name: Build
+        run: go build ./...
+
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
