@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 	"time"
 )
@@ -30,9 +31,13 @@ func envOr(key, fallback string) string {
 
 func parseDuration(key string, fallback time.Duration) time.Duration {
 	if raw := os.Getenv(key); raw != "" {
-		if d, err := time.ParseDuration(raw); err == nil {
-			return d
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			slog.Warn("invalid duration env var, using default",
+				"key", key, "value", raw, "default", fallback)
+			return fallback
 		}
+		return d
 	}
 	return fallback
 }

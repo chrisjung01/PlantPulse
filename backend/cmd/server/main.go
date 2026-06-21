@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"plantpulse/backend/internal/db"
 	"plantpulse/backend/internal/handler"
@@ -43,8 +44,9 @@ func main() {
 	mux.HandleFunc("GET /sensors/{id}/readings/aggregated", sensors.AggregateReadings)
 
 	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: handler.LogRequests(cors(cfg.AllowedOrigin, mux)),
+		Addr:              cfg.Addr,
+		Handler:           handler.LogRequests(cors(cfg.AllowedOrigin, mux)),
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	quit := make(chan os.Signal, 1)
@@ -59,6 +61,7 @@ func main() {
 	}()
 
 	<-quit
+	signal.Stop(quit)
 	slog.Info("shutting down", "timeout", cfg.ShutdownTimeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
