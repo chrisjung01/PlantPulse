@@ -13,17 +13,9 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("DATABASE_PATH")
-	if dbPath == "" {
-		dbPath = "./plantpulse.db"
-	}
+	cfg := loadConfig()
 
-	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
-	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:5173"
-	}
-
-	sqlDB, err := sql.Open("sqlite", dbPath)
+	sqlDB, err := sql.Open("sqlite", cfg.DatabasePath)
 	if err != nil {
 		slog.Error("open db", "err", err)
 		os.Exit(1)
@@ -47,8 +39,8 @@ func main() {
 	mux.HandleFunc("GET /sensors/{id}/readings", sensors.ListReadings)
 	mux.HandleFunc("GET /sensors/{id}/readings/aggregated", sensors.AggregateReadings)
 
-	slog.Info("server starting", "addr", ":8080")
-	if err := http.ListenAndServe(":8080", handler.LogRequests(cors(allowedOrigin, mux))); err != nil {
+	slog.Info("server starting", "addr", cfg.Addr)
+	if err := http.ListenAndServe(cfg.Addr, handler.LogRequests(cors(cfg.AllowedOrigin, mux))); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
