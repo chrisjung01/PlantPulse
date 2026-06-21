@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"plantpulse/backend/internal/db"
 	"plantpulse/backend/internal/handler"
@@ -13,17 +17,9 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("DATABASE_PATH")
-	if dbPath == "" {
-		dbPath = "./plantpulse.db"
-	}
+	cfg := loadConfig()
 
-	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
-	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:5173"
-	}
-
-	sqlDB, err := sql.Open("sqlite", dbPath)
+	sqlDB, err := sql.Open("sqlite", cfg.DatabasePath)
 	if err != nil {
 		slog.Error("open db", "err", err)
 		os.Exit(1)
@@ -47,11 +43,35 @@ func main() {
 	mux.HandleFunc("GET /sensors/{id}/readings", sensors.ListReadings)
 	mux.HandleFunc("GET /sensors/{id}/readings/aggregated", sensors.AggregateReadings)
 
-	slog.Info("server starting", "addr", ":8080")
-	if err := http.ListenAndServe(":8080", handler.LogRequests(cors(allowedOrigin, mux))); err != nil {
-		slog.Error("server stopped", "err", err)
+	srv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           handler.LogRequests(cors(cfg.AllowedOrigin, mux)),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		slog.Info("server starting", "addr", cfg.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-quit
+	signal.Stop(quit)
+	slog.Info("shutting down", "timeout", cfg.ShutdownTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("shutdown error", "err", err)
 		os.Exit(1)
 	}
+	slog.Info("server stopped")
 }
 
 func cors(origin string, next http.Handler) http.Handler {
