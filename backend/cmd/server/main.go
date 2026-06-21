@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"plantpulse/backend/internal/db"
 	"plantpulse/backend/internal/handler"
@@ -39,11 +42,33 @@ func main() {
 	mux.HandleFunc("GET /sensors/{id}/readings", sensors.ListReadings)
 	mux.HandleFunc("GET /sensors/{id}/readings/aggregated", sensors.AggregateReadings)
 
-	slog.Info("server starting", "addr", cfg.Addr)
-	if err := http.ListenAndServe(cfg.Addr, handler.LogRequests(cors(cfg.AllowedOrigin, mux))); err != nil {
-		slog.Error("server stopped", "err", err)
+	srv := &http.Server{
+		Addr:    cfg.Addr,
+		Handler: handler.LogRequests(cors(cfg.AllowedOrigin, mux)),
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		slog.Info("server starting", "addr", cfg.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-quit
+	slog.Info("shutting down", "timeout", cfg.ShutdownTimeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("shutdown error", "err", err)
 		os.Exit(1)
 	}
+	slog.Info("server stopped")
 }
 
 func cors(origin string, next http.Handler) http.Handler {
